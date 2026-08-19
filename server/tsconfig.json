@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    /* Modern JS features are fine to emit — we're running on current Node. */
+    "target": "ES2022",
+    "lib": ["ES2022"],
+
+    /* "module": "NodeNext" tells TS to compile modules the way Node's native ESM loader
+       expects. The consequence you'll notice: relative imports must include the .js
+       extension even though the source file is .ts, e.g. `import { foo } from "./bar.js"`
+       even though the actual file on disk is `bar.ts`. This looks wrong coming from
+       JavaScript/bundler-based setups (Vite, webpack) where extensions are optional, but
+       Node's ESM resolver requires the extension it will see at runtime — after
+       compilation, bar.ts really does become bar.js. */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "outDir": "dist",
+    "rootDir": "src",
+
+    /* Strict mode catches real bugs (e.g. using a possibly-undefined value) at compile
+       time instead of at runtime. Worth the extra friction while learning. */
+    "strict": true,
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

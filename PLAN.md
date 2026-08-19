@@ -1,5 +1,21 @@
 # NearestGas — Fullstack Gas Price Finder with an AI Chatbot
 
+## Status (update this section as phases complete)
+
+- ✅ **Phase 1 — Scaffold: DONE.** `client/` (Vite + React + TS + react-leaflet installed) and
+  `server/` (Express + TS, ESM, structure per below) both scaffolded, type-check clean, and
+  verified to build/run. `README.md`, `LICENSE` (MIT), root `.gitignore` added.
+- ➡️ **Phase 2 — Data layer: NEXT.** Mongoose models, `FuelPriceProvider` interface,
+  `stationsService` cache-first flow, `geocodeService`.
+- ⏳ **Blocking for Phase 2 end-to-end testing:** `server/.env` exists but `MONGODB_URI`,
+  `ANTHROPIC_API_KEY`, and `FUEL_API_KEY` are all still **empty** (only `PORT` is set). Code
+  can be written without these, but nothing will actually run/connect until they're filled in.
+  Needed: a MongoDB Atlas free (M0) cluster, an Anthropic API key, and a key for the chosen
+  Canadian fuel-price provider (Barchart OnDemand recommended — see below for the decision that
+  still needs finalizing at signup time).
+- **Nothing has been committed to git.** The owner handles all git operations themselves —
+  never run `git init`/`add`/`commit`/`push` on this project.
+
 ## Context
 
 **What we're building:** A web app that finds the best nearby gas prices for a person's
