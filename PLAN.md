@@ -58,8 +58,23 @@
   - Verified live in-browser: changing "Within" refetches with the new `radius`; clicking a
     non-cheapest list row correctly pans + pops open its marker; the origin dot + circle render
     at the searched location with the map's other pins visible relative to it.
-- ➡️ **Phase 4 — Subscriptions/deals: NEXT.** `Program`/`Deal` Mongoose models + seed script +
-  `SubscriptionPicker` component. Verify programs load and are selectable client-side.
+- ✅ **Phase 4 — Subscriptions/deals: DONE.** `Program` (name + `brands: string[]` +
+  description) and `Deal` (per-program perk, `discountCentsPerLitre: number | null` — `null`
+  for points-based perks or a program like Costco's where the saving is already baked into the
+  posted price) Mongoose models; `server/src/seed/seedPrograms.ts` (`npm run seed`, idempotent —
+  clears + re-inserts) seeded with 7 real Canadian programs matched to the brands
+  `gasQuebecProvider` can infer (Petro-Points, PC Optimum, Costco Gas, Triangle Rewards, Journie
+  Rewards, Ultramar Récompenses, Shell Go+) — discount figures are labeled illustrative, not a
+  live quote of real promotional terms. `dealsService.getAllPrograms()` + `GET /api/programs`
+  (mounted in `index.ts`) serve them; client `SubscriptionPicker` component fetches and renders
+  them as checkboxes, wired into `App.tsx` via new `selectedProgramIds` state (a `Set<string>`,
+  deliberately outside the stations-fetch effect's dependency array since it's for the Phase 5
+  chatbot request, not the map). Verified live in-browser: all 7 programs load as checkboxes
+  under the search controls, and clicking one toggles its checked state correctly.
+- ➡️ **Phase 5 — Chatbot: NEXT.** `chatService` (compute effective price per station using
+  selected programs' deals, then Gemini 3.7 Flash reasons over that + explains) + `POST
+  /api/chat` route + a chat UI component wired to `selectedProgramIds` (already in `App.tsx`
+  from Phase 4) and the current `stations` list.
 - 🔄 **Chatbot model switched from Claude Haiku 4.5 to Gemini 3.7 Flash** (owner's choice,
   2026-08-25). `@anthropic-ai/sdk` removed, `@google/genai` (v2.18.0) installed;
   `ANTHROPIC_API_KEY` renamed to `GEMINI_API_KEY` throughout `config.ts`/`.env(.example)`.

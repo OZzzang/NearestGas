@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { Map } from "./components/Map";
 import { StationList } from "./components/StationList";
+import { SubscriptionPicker } from "./components/SubscriptionPicker";
 import { ApiError, fetchNearbyStations } from "./lib/api";
 import type { FuelType, LatLng, Station } from "./types";
 import "./App.css";
@@ -33,6 +34,22 @@ function App() {
   // StationList. Reset on every fresh fetch below so a selection from a previous
   // search doesn't linger and point at a station that's no longer in the list.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Which fuel loyalty programs the user says they belong to — feeds the Phase 5
+  // chatbot recommendation, not the /api/stations fetch above, so it deliberately
+  // isn't in that effect's dependency array.
+  const [selectedProgramIds, setSelectedProgramIds] = useState<Set<string>>(new Set());
+
+  function toggleProgram(id: string) {
+    setSelectedProgramIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +123,8 @@ function App() {
           </select>
         </label>
       </div>
+
+      <SubscriptionPicker selectedIds={selectedProgramIds} onToggle={toggleProgram} />
 
       {error && <p className="app__error">{error}</p>}
       {loading && <p className="app__loading">Loading stations…</p>}

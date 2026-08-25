@@ -151,6 +151,40 @@
   box-shadow: 0 0 0 2px #2563eb, 0 0 8px rgba(37, 99, 235, 0.7);
 }
 
+/* SubscriptionPicker */
+
+.subscription-picker {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px 14px;
+  margin: 0;
+}
+
+.subscription-picker legend {
+  padding: 0 6px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.subscription-picker__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.subscription-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.subscription-picker__error {
+  color: var(--error);
+  text-align: center;
+  margin: 0;
+}
+
 /* StationList */
 
 .station-list {

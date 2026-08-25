@@ -3,7 +3,7 @@
  * caller gets the same base URL, error handling, and — the TypeScript payoff — a typed
  * return value instead of `fetch`'s `Promise<any>` from `res.json()`.
  */
-import type { FuelType, GeocodeResult, NearbyStationsResponse } from "../types";
+import type { FuelType, GeocodeResult, NearbyStationsResponse, ProgramsResponse } from "../types";
 
 // Falls back to localhost:4000 (the server's default port) so `npm run dev` works
 // out of the box without a `.env` file already in place.
@@ -15,7 +15,7 @@ export class ApiError extends Error {}
 // return the parsed JSON or throw a readable error. `<T>` is a generic — the caller
 // decides what shape the JSON should be (e.g. `request<NearbyStationsResponse>(...)`),
 // and TypeScript carries that type through the returned `Promise` for them.
-async function request<T>(path: string, params: Record<string, string | number>): Promise<T> {
+async function request<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
   const url = new URL(path, API_URL);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, String(value));
@@ -40,4 +40,8 @@ export function fetchNearbyStations(params: {
 
 export function geocodeAddress(query: string): Promise<GeocodeResult> {
   return request<GeocodeResult>("/api/geocode", { q: query });
+}
+
+export function fetchPrograms(): Promise<ProgramsResponse> {
+  return request<ProgramsResponse>("/api/programs");
 }

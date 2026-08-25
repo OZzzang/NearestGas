@@ -42,3 +42,22 @@ export interface GeocodeResult {
   lat: number;
   lng: number;
 }
+
+// Mirrors server `DealSummary`/`ProgramSummary` (services/dealsService.ts).
+export interface Deal {
+  title: string;
+  description: string;
+  discountCentsPerLitre: number | null;
+}
+
+export interface Program {
+  id: string;
+  name: string;
+  brands: string[];
+  description: string;
+  deals: Deal[];
+}
+
+export interface ProgramsResponse {
+  programs: Program[];
+}

@@ -11,6 +11,7 @@ import { config } from "./config.js";
 import { connectToDatabase } from "./lib/db.js";
 import { stationsRouter } from "./routes/stations.js";
 import { geocodeRouter } from "./routes/geocode.js";
+import { programsRouter } from "./routes/programs.js";
 
 const app = express();
 
@@ -25,7 +26,8 @@ app.get("/api/health", (_req: Request, res: Response) => {
 
 app.use("/api/stations", stationsRouter);
 app.use("/api/geocode", geocodeRouter);
-// Route modules for deals/programs and chat get mounted here in later phases.
+app.use("/api/programs", programsRouter);
+// The chat route gets mounted here in a later phase.
 
 async function main(): Promise<void> {
   await connectToDatabase();
