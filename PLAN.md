@@ -39,6 +39,25 @@
   back to it, crashing every non-highlighted marker (`Cannot read properties of undefined
   (reading 'createIcon')`) and leaving the whole app blank. Fixed by always passing an
   explicit icon (a `new L.Icon.Default()` for the normal case).
+- ✅ **Phase 3 follow-ups (post-MVP polish, requested after the initial Phase 3 pass):**
+  - **Click-to-focus:** `StationList` rows are now clickable (`onSelect`/`selectedId` passed
+    down from `App`) — clicking one pans the map to that station's marker and opens its popup
+    (`Map.tsx`'s `FocusSelected` child component, which holds a `markerRefs` map keyed by
+    `sourceStationId` so it can look up the right Leaflet marker instance). The row also gets a
+    blue selection ring, layered independently of the cheapest station's green highlight so
+    both can show at once. Selection resets to `null` on every fresh fetch.
+  - **Adjustable search radius:** a "Within" `<select>` next to the fuel selector
+    (`RADIUS_OPTIONS_KM` in `App.tsx`) drives the existing `radius` query param — options are
+    kept realistic (`1, 2, 3, 5, 10, 25` km, default `2`) rather than exposing the server's full
+    200km cap, since nobody detours 100km for cheaper gas.
+  - **Search-origin marker + radius circle:** `Map.tsx` now renders a "you are here"-style dot
+    (`L.divIcon`, styled via `.marker-origin__dot`, deliberately a different *shape* than the
+    station pins so it reads instantly) at the search center, plus a translucent `Circle` sized
+    to the current radius — so it's visually obvious where every station's distance is measured
+    from and how far the current search actually reaches.
+  - Verified live in-browser: changing "Within" refetches with the new `radius`; clicking a
+    non-cheapest list row correctly pans + pops open its marker; the origin dot + circle render
+    at the searched location with the map's other pins visible relative to it.
 - ➡️ **Phase 4 — Subscriptions/deals: NEXT.** `Program`/`Deal` Mongoose models + seed script +
   `SubscriptionPicker` component. Verify programs load and are selectable client-side.
 - 🔄 **Chatbot model switched from Claude Haiku 4.5 to Gemini 3.7 Flash** (owner's choice,
@@ -267,10 +286,14 @@ when `chatService` is actually implemented (Phase 5), since this is a fast-movin
 ## Frontend design
 
 - **`SearchBar`**: "Use my location" (browser Geolocation API via `useGeolocation`) or type an
-  address (→ `/api/geocode`).
-- **`Map`** (`react-leaflet`): OSM tiles, a marker per station with a price popup; recenters on the
-  chosen location. Cheapest station highlighted.
-- **`StationList`**: sortable list (by price / distance) mirroring the map pins.
+  address (→ `/api/geocode`). An adjustable "Within" radius selector (1–25 km, see Status above)
+  sits alongside it in `App.tsx`'s controls row and feeds the same `/api/stations` fetch.
+- **`Map`** (`react-leaflet`): OSM tiles, a marker per station with a price popup; recenters on
+  the chosen location. Cheapest station highlighted with a distinct marker; clicking a station in
+  `StationList` pans to and opens that station's popup. A "you are here" dot + translucent circle
+  mark the search origin and current radius.
+- **`StationList`**: sortable list (by price / distance) mirroring the map pins; clicking a row
+  selects it (see `Map` above) and shows a blue ring independent of the cheapest highlight.
 - **`SubscriptionPicker`**: checkboxes for the user's fuel programs (no login — just client state,
   optionally persisted to `localStorage`).
 - **`Chatbot`**: simple chat panel → `POST /api/chat` with message + selected subscriptions +
