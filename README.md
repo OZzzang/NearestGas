@@ -4,11 +4,6 @@ Find the cheapest nearby gas station in Canada, see it on a map, and ask an AI c
 station is actually the best deal once your fuel memberships and rewards programs are factored
 in.
 
-This is a personal fullstack portfolio project. It exists to build hands-on experience with a
-production-shaped fullstack app (React/TypeScript frontend, Express/TypeScript API, MongoDB) and
-with integrating a real LLM (Claude Haiku 4.5) into a product feature, rather than just calling
-an API in isolation.
-
 ## Features
 
 - **Location search** — use your current location (browser geolocation) or type in a Canadian
