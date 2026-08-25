@@ -18,8 +18,11 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
-  ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
-  FUEL_API_KEY: z.string().min(1, "FUEL_API_KEY is required"),
+  GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
+  // Optional, not required: the active provider (Gas Quebec) is a free, unauthenticated
+  // API. Kept here so a future provider that DOES need a key has a place to read it from
+  // without touching this schema again.
+  FUEL_API_KEY: z.string().optional(),
   CLIENT_ORIGIN: z.string().default("http://localhost:5173"),
 });
 
@@ -36,7 +39,7 @@ if (!parsed.success) {
 export const config = {
   port: parsed.data.PORT,
   mongoUri: parsed.data.MONGODB_URI,
-  anthropicApiKey: parsed.data.ANTHROPIC_API_KEY,
+  geminiApiKey: parsed.data.GEMINI_API_KEY,
   fuelApiKey: parsed.data.FUEL_API_KEY,
   clientOrigin: parsed.data.CLIENT_ORIGIN,
 };

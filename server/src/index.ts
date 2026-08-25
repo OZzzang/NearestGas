@@ -9,6 +9,8 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import { config } from "./config.js";
 import { connectToDatabase } from "./lib/db.js";
+import { stationsRouter } from "./routes/stations.js";
+import { geocodeRouter } from "./routes/geocode.js";
 
 const app = express();
 
@@ -21,8 +23,9 @@ app.get("/api/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
-// Route modules (stations, geocode, deals, chat) get mounted here in Phase 2+, e.g.:
-//   app.use("/api/stations", stationsRouter);
+app.use("/api/stations", stationsRouter);
+app.use("/api/geocode", geocodeRouter);
+// Route modules for deals/programs and chat get mounted here in later phases.
 
 async function main(): Promise<void> {
   await connectToDatabase();
