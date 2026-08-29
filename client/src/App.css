@@ -124,23 +124,67 @@
   width: 100%;
   border-radius: 10px;
   border: 1px solid var(--border);
+  overflow: hidden;
 }
 
-/* Leaflet renders its own <img>, so the "cheapest" marker is distinguished with a CSS
-   filter (hue-rotate + saturate) rather than swapping in a different icon image. */
-.marker-cheapest {
-  filter: hue-rotate(90deg) saturate(1.6);
+.map--error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted, #666);
+  background: #f4f4f5;
+}
+
+/* Google's InfoWindow bubble is always a plain white/light background, regardless of the
+   app's own theme — but `color` is inherited, so without this, dark-mode's light-gray
+   `--text` (meant for a dark background) cascades in and reads as washed-out/transparent
+   on the bubble's white background. Pinning to the light-mode values here keeps info
+   window content readable in both themes. */
+.map-popup {
+  --text: #3f3d45;
+  --cheapest: #16a34a;
+  --accent: #2563eb;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+/* Mirrors the marker's own brand badge (same color + abbreviation as the Pin's glyph, see
+   BRAND_STYLES in components/Map.tsx) so the info window visually echoes the pin you just
+   clicked. Sits above the name, at a size that reads as the popup's header rather than an
+   inline decoration. */
+.popup-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.popup-title {
+  font-weight: 700;
 }
 
 .popup-cheapest-tag {
-  margin-top: 4px;
   font-weight: 600;
   color: var(--cheapest);
 }
 
-/* Search-origin "you are here" dot (leaflet divIcon, see components/Map.tsx). A ring +
-   pulse rather than another pin, so it reads as "this is the point everything else is
-   measured from" rather than as one more station. */
+.popup-gmaps-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+/* Search-origin "you are here" dot (custom AdvancedMarker content, see
+   components/Map.tsx). A ring rather than another pin, so it reads as "this is the
+   point everything else is measured from" rather than as one more station. */
 .marker-origin__dot {
   display: block;
   width: 14px;

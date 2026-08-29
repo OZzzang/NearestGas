@@ -8,9 +8,10 @@ in (see [Roadmap](#roadmap-not-yet-built) below — that part isn't built yet).
 
 - **Location search** — use your current location (browser geolocation) or type an address/
   postal code, geocoded via Nominatim.
-- **Map + list view** — nearby gas stations plotted on an OpenStreetMap/Leaflet map, mirrored in
-  a list sortable by price or distance. Prices shown in ¢/L (CAD). Click a station in the list to
-  pan the map to it and open its popup.
+- **Map + list view** — nearby gas stations plotted on a Google Map, mirrored in a list sortable
+  by price or distance. Prices shown in ¢/L (CAD). Click a station's marker (or a row in the
+  list) to see its address and price, plus a link straight to that station's real listing on
+  Google Maps.
 - **Adjustable search radius** (1–25 km) — shown on the map as a circle around a "you are here"
   marker at the search origin, so it's visually clear where every station's distance is measured
   from.
@@ -43,7 +44,7 @@ swappable: adding wider coverage later is a one-file change, not a rewrite.
 
 | Layer | Choice |
 |---|---|
-| Frontend | React + TypeScript (Vite), `react-leaflet` for the map |
+| Frontend | React + TypeScript (Vite), `@vis.gl/react-google-maps` (Google Maps) for the map |
 | Backend | Node.js + Express + TypeScript |
 | Database | MongoDB (Atlas free tier), Mongoose — geospatial (`2dsphere`) cache of station data |
 | Gas price data | [Gas Quebec API](https://www.gasquebec.ca) (free, unauthenticated, Quebec coverage), behind a swappable provider interface |
@@ -71,6 +72,8 @@ You will need:
 - A [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) free (M0) cluster connection string
 - A [Gemini API key](https://aistudio.google.com/) — the server currently requires this to boot
   (env validation is all-or-nothing) even though the chatbot itself isn't built yet
+- A [Google Maps JavaScript API key](https://console.cloud.google.com/google/maps-apis/credentials)
+  (Maps JavaScript API enabled) — the map renders an error state without it
 - No fuel-price API key needed — the active provider (Gas Quebec) is free and unauthenticated
 
 ### Backend
@@ -89,7 +92,7 @@ npm run dev             # starts the API on http://localhost:4000
 ```bash
 cd client
 npm install
-cp .env.example .env    # optional — defaults to http://localhost:4000 if unset
+cp .env.example .env    # fill in VITE_GOOGLE_MAPS_API_KEY; VITE_API_URL defaults to localhost:4000
 npm run dev              # starts the app on http://localhost:5173
 ```
 

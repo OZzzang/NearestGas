@@ -82,6 +82,141 @@
 - `server/.env` now has both `MONGODB_URI` and `GEMINI_API_KEY` set — the server boots and
   full end-to-end (frontend + backend) testing is unblocked, even though `chatService` itself
   isn't wired up until Phase 5. `FUEL_API_KEY` is not needed (see above).
+- 🔄 **Map switched from Leaflet/OpenStreetMap to Google Maps** (owner's choice, 2026-08-29) —
+  the owner didn't like Leaflet's look. `client/src/components/Map.tsx` rewritten on
+  `@vis.gl/react-google-maps` (Google's actively-maintained library): Advanced Markers (`Pin`)
+  replace Leaflet icons (red pins, green for the cheapest station), `InfoWindow` replaces
+  `Popup`, and the library's built-in `Circle` component replaces Leaflet's. `leaflet` +
+  `react-leaflet` + `@types/leaflet` removed; `@vis.gl/react-google-maps` + `@types/google.maps`
+  (devDependency, needed for the `google.maps.*` ambient types — `tsconfig.app.json`'s `types`
+  array had to be widened from just `["vite/client"]` to include `"google.maps"`, since a
+  non-empty `types` array otherwise excludes all other ambient `@types/*` packages) added.
+  New env vars: `VITE_GOOGLE_MAPS_API_KEY` (required — the map renders an inline error state
+  without it) and `VITE_GOOGLE_MAPS_MAP_ID` (optional, defaults to Google's `DEMO_MAP_ID`
+  testing placeholder — Advanced Markers require a Map ID; **don't ship `DEMO_MAP_ID` to
+  production**, create a real one in Cloud Console > Google Maps Platform > Map Management).
+  **Bug found + fixed during verification:** each `StationMarker`/`OriginMarker` initially held
+  its own local "is my info window open" state, so clicking a second marker (or list row) left
+  the first marker's `InfoWindow` open too — Google's `InfoWindow` instances don't auto-close
+  each other the way Leaflet's `map.openPopup()` does by default. Fixed by lifting to a single
+  `openMarkerId` piece of state in `Map`, so at most one info window is open at a time, matching
+  the old Leaflet behavior. Verified live in-browser end-to-end: pins render, marker click opens
+  its info window and closes any other, selecting a list row pans + opens the matching marker
+  and closes the previous one, and the cheapest station's green pin shows the "Cheapest nearby"
+  tag correctly.
+- 🔄 **Station markers switched to Google's stock pin look** (owner's choice, 2026-08-29,
+  follow-up to the Google Maps switch above) — regular stations now render Google's own
+  default red teardrop pin instead of a custom-colored one; only the cheapest station still
+  gets a distinct (green) `Pin`. **Bug found + fixed:** `<AdvancedMarker>` only falls back to
+  Google's default pin when it receives **no `children` prop at all** — a falsy child like
+  `{isCheapest && <Pin/>}` still counts as "content provided" and rendered a literal 0×0 empty
+  marker (confirmed via `getBoundingClientRect()` in-browser: 3 of 4 station markers had
+  `width: 0, height: 0`). Fixed in `StationMarker` (`Map.tsx`) by branching to two entirely
+  separate `<AdvancedMarker>` elements — one with a `Pin` child (cheapest), one with none
+  (everyone else) — rather than conditionally rendering a child inside one element. Verified
+  live in-browser via DOM measurement (all 4 markers back to their correct 26×38 pin size) and
+  a screenshot (3 default red pins + 1 green pin, click-to-open info windows still working).
+- 🔄 **Regular station markers removed entirely — now rely on Google's own native POI icons**
+  (owner's choice, 2026-08-29, second follow-up to the Google Maps switch) — the owner wanted
+  to click a station on the map and see *Google's own* info about it, not a custom marker.
+  `Map.tsx`'s per-station `AdvancedMarker`/`Pin`/`InfoWindow` loop was removed for every
+  station except the cheapest one (renamed `CheapestMarker`); regular stations now render
+  nothing of our own — Google's base map already shows clickable business-POI icons (gas
+  pumps, restaurants, etc.), and clicking one opens *Google's own* default info card (name,
+  address, accessibility info, a link into Google Maps) automatically, since neither
+  `clickableIcons` nor `event.stop()` is touched anywhere in the app. Also simplified:
+  `markerRefs`/`onMarkerReady` (previously threaded through every `StationMarker` so
+  `FocusSelected` could look up a marker instance to pan to) is gone — `FocusSelected` now
+  reads the selected station's lat/lng straight out of the `stations` prop, since panning
+  never actually needed a marker, only coordinates.
+  **Known limitation (inherent to the platform, not fixable in our code):** Google's own POI
+  icons/labels don't reliably render until fairly close zoom — the app's default zoom (13,
+  matching a 1–5km search radius) is too far out for most small business icons, including gas
+  stations, to show at all; the user has to zoom in (verified against a real, non-embedded
+  google.com/maps tab at the same coordinates) before Google's icon for a given station
+  appears and becomes clickable. Also, a station in our data with no matching Google-tagged
+  POI at all won't be clickable no matter the zoom — there's no code fix for this, it's a
+  tradeoff of the "use Google's own data" approach vs. our previous custom-marker one.
+  Verified live in-browser: no marker renders for regular stations at any zoom; the cheapest
+  station's green pin still renders and opens its own info window; clicking a real POI icon in
+  the embedded map (tested on a restaurant icon, since it renders at lower zoom than the gas
+  stations in this test dataset did) pops Google's own native info card, confirming the
+  click-to-Google-info mechanism works with zero extra code once our own marker is out of the
+  way.
+- 🔄 **Reverted to our own marker per station, plus a "View on Google Maps" link** (owner's
+  choice, 2026-08-29, third follow-up — the previous change above left the map with "no tags
+  at all" at the app's normal zoom level, exactly the known limitation called out at the time)
+  — `Map.tsx`'s per-station `AdvancedMarker` (the same `isCheapest ? <Pin/> : nothing`
+  branching from two entries back) is back for every station, not just the cheapest, so a pin
+  always shows regardless of whether Google has a POI icon there or what zoom the map is at.
+  Each station's `InfoWindow` now also has a "View on Google Maps ↗" link (`googleMapsUrl()`
+  in `Map.tsx`) — `target="_blank"`, opens `google.com/maps/search/?api=1&query=<name>
+  <address>` in a new tab. **Design note:** tried a coordinates-based query
+  (`query=<lat>,<lng>`) first since it needs no guessing about address formatting, but verified
+  live that it lands on a bare lat/lng-labeled pin with no business info — switched to a
+  name+address text query, verified live that it correctly resolves to the station's actual
+  Google Maps listing (photo, rating, hours, Google's own live fuel prices, address, website).
+  Verified live in-browser end-to-end: all 4 station markers render (3 default red pins + 1
+  green cheapest pin), clicking one opens its info window with the price and the Google Maps
+  link, and clicking that link opens the correct real listing in a new tab.
+- 🔄 **Fixed low-contrast info window text** (owner's report, 2026-08-29, follow-up to the
+  above) — the owner said the text looked "too transparent/light" when a marker's info window
+  was open. **Cause:** `color` is an inherited CSS property, and `:root` in `index.css` sets it
+  to `--text`, which in dark mode (`prefers-color-scheme: dark`) is a light gray-blue meant for
+  the app's own dark background — but Google's `InfoWindow` bubble is rendered into the same
+  DOM tree and is always a plain white/light background regardless of the app's theme, so that
+  light-mode-only color cascaded in and read as washed-out. **Fix:** wrapped each info window's
+  content in a `.map-popup` div (`Map.tsx`) and, in `App.css`, gave that class its own
+  `--text`/`--cheapest`/`--accent` overrides pinned to their light-mode values, so info window
+  text stays readable regardless of which theme the rest of the app is in. Verified live in
+  dark mode (the theme the report was made in): station name, address, price, the green
+  "Cheapest nearby" tag, and the "View on Google Maps" link are all now solid and legible
+  against the white info window bubble.
+- 🔄 **Fixed info-window link spacing + added per-brand marker icons** (owner's report,
+  2026-08-29, follow-up to the above) — two asks in one pass:
+  - **Spacing bug:** the owner said the "View on Google Maps" link sat too close to the price
+    "on some markers." **Cause:** the price was a bare text node (no wrapping element), so on
+    non-cheapest markers — which had nothing else between it and the link — it flowed inline
+    on the same line as `.popup-gmaps-link` (an `inline-block`, whose `margin-top` has nothing
+    above it to push away from on the same line). The cheapest-only `.popup-cheapest-tag` div
+    happened to force a line break by accident, which is why only non-cheapest markers showed
+    the bug. **Fix:** wrapped the price in its own `<div>` in `StationMarker` (`Map.tsx`) so
+    every station's info window has consistent block-level spacing regardless of whether the
+    cheapest tag is present.
+  - **Per-brand marker icons:** the owner asked for station icons on each marker. Before
+    building anything, flagged that using real brand logo image assets would mean downloading
+    files from brand websites (needs per-file go-ahead) and embedding trademarked artwork —
+    the owner asked directly whether that's legally fine for a non-commercial portfolio
+    project; answered honestly that isn't something to certify (trademark law isn't only about
+    monetization, though non-commercial/informational use like this is generally treated
+    leniently) and proposed a safer default that gets the same practical benefit. **Implemented:**
+    `BRAND_STYLES` in `Map.tsx` — a short abbreviation (e.g. "PC", "E", "S") + each brand's
+    real public brand *color* (not logo artwork) per entry in `KNOWN_BRANDS`
+    (`server/src/providers/gasQuebecProvider.ts`), rendered via `Pin`'s `background`/`glyph`/
+    `glyphColor` props; a brand with no match (or `station.brand === null`) falls back to a
+    neutral gray pin with a generic fuel-pump emoji glyph (`DEFAULT_BRAND_STYLE`). The cheapest
+    station keeps its distinct treatment via a gold `borderColor` + slightly larger `scale`
+    instead of the plain green pin used before, so brand color is visible on every marker
+    including the cheapest one.
+  Verified live in-browser: Esso markers show a dark-blue pin with a white "E", Shell a yellow
+  pin with a red "S", Petro-Canada a red pin with a white "PC"; the cheapest station's pin has
+  a visible gold border and is slightly larger than the rest; clicking any marker still opens
+  its info window with the price on its own line, properly spaced above the Google Maps link.
+- 🔄 **Added the same brand badge to the info window** (owner's follow-up, 2026-08-29) — the
+  owner initially asked for the brand badge inside the marker's glyph too (tried a generic
+  fuel-pump SVG icon replacing the letter, mid-implementation), then interrupted to clarify
+  the actual ask was narrower: leave the map pins exactly as they were (brand color + letter),
+  and instead repeat that same badge inside the info window that opens on click. Reverted the
+  fuel-pump-icon attempt. `StationMarker` (`Map.tsx`) now renders a `.popup-badge` span (same
+  `background`/`glyphColor`/`abbr` from `BRAND_STYLES` as the marker's own `Pin`) as the first
+  thing inside the info window. Owner then asked for that badge to move to its own line at the
+  top (was inline next to the name) and be bigger, plus for the popup's spacing to be tightened
+  overall. Restructured every line of the info window (name, address, price) into its own block
+  `<div>` — badge now stacks above the name instead of sitting beside it — and sized the badge
+  up from 20px to 36px (`.popup-badge` in `App.css`), removing the now-unused flex-row wrapper
+  it previously needed. Verified live in-browser: Shell's info window shows a large yellow
+  circular "S" badge at the top, directly above "Shell", with no extra gap before the address/
+  price/link below it.
 - **Nothing has been committed to git.** The owner handles all git operations themselves —
   never run `git init`/`add`/`commit`/`push` on this project.
 
@@ -145,7 +280,8 @@ integration); no login/auth; and easy deployment on the owner's existing paid **
 - **Gemini 3.7 Flash** (`gemini-3.7-flash`, via `@google/genai`) powers the chatbot — the
   owner's choice (switched from the original Claude Haiku 4.5 plan on 2026-08-25); cheap,
   fast, generous free tier, ideal for this constrained recommender task.
-- **Map:** Leaflet + OpenStreetMap via `react-leaflet` — free, no API key, no billing.
+- **Map:** Google Maps via `@vis.gl/react-google-maps` (switched from Leaflet/OpenStreetMap
+  2026-08-29, owner's choice — see Status above). Requires a `VITE_GOOGLE_MAPS_API_KEY`.
 
 ## The gas-price data problem (and how we solve it)
 
@@ -192,7 +328,7 @@ free — covers Canada)** and cached in Mongo so each address is geocoded at mos
 ## Architecture overview
 
 ```
-Browser (React + TS + Leaflet)
+Browser (React + TS + Google Maps)
    │  1. gets location (GPS or typed address → /api/geocode)
    │  2. GET /api/stations?lat&lng&radius&fuel  → nearby stations (map pins + list)
    │  3. POST /api/chat  { message, subscriptions } → best-station recommendation
@@ -212,8 +348,9 @@ MongoDB Atlas (free M0)   Gas Quebec API             Gemini API (@google/genai)
 ## Tech stack (concrete)
 
 - **Frontend:** React + TypeScript via **Vite** (fast, modern, minimal config — not the
-  deprecated CRA). `react-leaflet` + `leaflet` for the map. Native `fetch` (or `axios`) for API
-  calls. Plain CSS or CSS modules (keep styling simple/readable).
+  deprecated CRA). `@vis.gl/react-google-maps` for the map (needs `VITE_GOOGLE_MAPS_API_KEY`).
+  Native `fetch` (or `axios`) for API calls. Plain CSS or CSS modules (keep styling
+  simple/readable).
 - **Backend:** Node + **Express** + TypeScript. **Mongoose** (typed ODM) for MongoDB.
   `@google/genai` for Gemini. `dotenv` for secrets, `cors`, `zod` for request/env validation
   (light touch), `tsx`/`ts-node` for dev, `tsc` build.
@@ -303,10 +440,22 @@ when `chatService` is actually implemented (Phase 5), since this is a fast-movin
 - **`SearchBar`**: "Use my location" (browser Geolocation API via `useGeolocation`) or type an
   address (→ `/api/geocode`). An adjustable "Within" radius selector (1–25 km, see Status above)
   sits alongside it in `App.tsx`'s controls row and feeds the same `/api/stations` fetch.
-- **`Map`** (`react-leaflet`): OSM tiles, a marker per station with a price popup; recenters on
-  the chosen location. Cheapest station highlighted with a distinct marker; clicking a station in
-  `StationList` pans to and opens that station's popup. A "you are here" dot + translucent circle
-  mark the search origin and current radius.
+- **`Map`** (`@vis.gl/react-google-maps`): Google Maps tiles; recenters on the chosen location.
+  An Advanced Marker per station, colored + labeled by brand (`BRAND_STYLES` in `Map.tsx` — a
+  short abbreviation like "PC"/"E"/"S" plus each brand's real public brand color, deliberately
+  not logo artwork, to sidestep any trademark/asset-licensing question) regardless of whether
+  Google's own base map has a POI icon there or what zoom the map is at; a brand not in the
+  list (or `station.brand === null`) falls back to a neutral gray pin. The cheapest station
+  additionally gets a gold border and a slightly larger pin. Each station's info window opens
+  with that same brand badge at the top (`.popup-badge`, same color + abbreviation as the
+  marker's own `Pin`, so the popup visually echoes the pin just clicked), then the name,
+  address, price, and a "View on Google Maps ↗" link (`googleMapsUrl()`, a
+  `google.com/maps/search` URL built from the station's name + address) that opens that
+  station's real Google Maps listing in a new tab.
+  Clicking a station in `StationList` pans the map there and opens its info window (at most one
+  of our own info windows open at a time, tracked via a single `openMarkerId` in `Map`, since
+  Google's `InfoWindow`s don't auto-close each other the way Leaflet's popups did). A "you are
+  here" dot + translucent circle mark the search origin and current radius.
 - **`StationList`**: sortable list (by price / distance) mirroring the map pins; clicking a row
   selects it (see `Map` above) and shows a blue ring independent of the cheapest highlight.
 - **`SubscriptionPicker`**: checkboxes for the user's fuel programs (no login — just client state,
@@ -326,8 +475,10 @@ when `chatService` is actually implemented (Phase 5), since this is a fast-movin
 2. **Backend** → Render **Web Service** (Node): build `npm install && npm run build`, start
    `node dist/index.js`; env vars `MONGODB_URI`, `GEMINI_API_KEY`, `FUEL_API_KEY`,
    `CLIENT_ORIGIN`.
-3. **Frontend** → Render **Static Site**: build `npm run build`, publish `client/dist`, env var
-   `VITE_API_URL` → backend URL. Enable CORS on the backend for the static-site origin.
+3. **Frontend** → Render **Static Site**: build `npm run build`, publish `client/dist`, env vars
+   `VITE_API_URL` → backend URL, `VITE_GOOGLE_MAPS_API_KEY` (restricted to the deployed origin),
+   and `VITE_GOOGLE_MAPS_MAP_ID` (a real Map ID — don't ship the `DEMO_MAP_ID` dev placeholder).
+   Enable CORS on the backend for the static-site origin.
 4. Run the seed script once (programs + demo deals) against Atlas.
 
 ## Implementation phases (milestone order)
@@ -352,9 +503,12 @@ pattern as it's introduced, since the owner is learning TS while building.
 
 - **Gemini API key** (from aistudio.google.com) → `GEMINI_API_KEY` (for Gemini 3.7 Flash).
 - **MongoDB Atlas** free cluster → `MONGODB_URI`. ✅ done.
+- **Google Maps JavaScript API key** (Cloud Console, Maps JavaScript API enabled) →
+  `VITE_GOOGLE_MAPS_API_KEY`. ✅ done (2026-08-29).
 - ~~A fuel-price API key~~ — not needed; the active provider (Gas Quebec) is free and
   unauthenticated.
-  (Runnable locally end-to-end once `GEMINI_API_KEY` is set; deploys to the existing Render plan.)
+  (Runnable locally end-to-end once `GEMINI_API_KEY` and `VITE_GOOGLE_MAPS_API_KEY` are set;
+  deploys to the existing Render plan.)
 
 ## Verification (end-to-end)
 
