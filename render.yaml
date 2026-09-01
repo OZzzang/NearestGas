@@ -1,0 +1,40 @@
+# Render Blueprint — deploys both services from this one repo in one pass.
+# See PLAN.md's "Deployment (Render + Atlas)" section for the full manual steps this
+# automates. In the Render dashboard: New > Blueprint > point at this repo.
+#
+# Every `sync: false` var is a secret Render prompts for during Blueprint creation and
+# stores itself — never put real key/URI values in this file.
+services:
+  - name: nearestgas-api
+    type: web
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Set once nearestgas-web's URL is known (Render assigns it on first deploy) —
+      # needed for CORS (see server/src/index.ts).
+      - key: CLIENT_ORIGIN
+        sync: false
+
+  - name: nearestgas-web
+    type: web
+    runtime: static
+    rootDir: client
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Set to nearestgas-api's URL once it's known.
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_GOOGLE_MAPS_API_KEY
+        sync: false
+      # A real Map ID from Cloud Console > Google Maps Platform > Map Management — do
+      # NOT leave this unset in production (falls back to Google's DEMO_MAP_ID, testing
+      # only). See client/.env.example.
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false

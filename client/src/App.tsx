@@ -9,6 +9,7 @@ import { SearchBar } from "./components/SearchBar";
 import { Map } from "./components/Map";
 import { StationList } from "./components/StationList";
 import { SubscriptionPicker } from "./components/SubscriptionPicker";
+import { Chatbot } from "./components/Chatbot";
 import { ApiError, fetchNearbyStations } from "./lib/api";
 import type { FuelType, LatLng, Station } from "./types";
 import "./App.css";
@@ -146,6 +147,8 @@ function App() {
           onSelect={setSelectedId}
         />
       </div>
+
+      <Chatbot location={location} radius={radius} fuel={fuel} selectedProgramIds={selectedProgramIds} />
 
       {attribution && <footer className="app__attribution">{attribution}</footer>}
     </div>

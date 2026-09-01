@@ -71,10 +71,32 @@
   deliberately outside the stations-fetch effect's dependency array since it's for the Phase 5
   chatbot request, not the map). Verified live in-browser: all 7 programs load as checkboxes
   under the search controls, and clicking one toggles its checked state correctly.
-- ➡️ **Phase 5 — Chatbot: NEXT.** `chatService` (compute effective price per station using
-  selected programs' deals, then Gemini 3.7 Flash reasons over that + explains) + `POST
-  /api/chat` route + a chat UI component wired to `selectedProgramIds` (already in `App.tsx`
-  from Phase 4) and the current `stations` list.
+- ✅ **Phase 5 — Chatbot: DONE (2026-09-01).** `server/src/lib/gemini.ts` (configured
+  `GoogleGenAI` client + `CHAT_MODEL` constant), `chatService.ts` (deterministic
+  effective-¢/L math per candidate station — posted price minus the sum of any selected
+  program's non-null per-litre deals for that station's brand — computed in code, then
+  handed to Gemini as JSON context so it only reasons/explains, never computes or
+  invents a price), `POST /api/chat` (`routes/chat.ts`, same Quebec lat/lng bounds as
+  `/api/stations`, mounted in `index.ts`), and a `Chatbot` component wired into
+  `App.tsx` with `location`/`radius`/`fuel`/`selectedProgramIds`. `types.ts`/`lib/api.ts`
+  got `ChatRequest`/`ChatResponse`/`ChatMessage` + a `postChat` POST wrapper (the one
+  POST in `api.ts` — everything else there is a GET with query params). Verified live
+  end-to-end in-browser: typing "Which station is cheapest for me?" into the new chat
+  panel returns a real Gemini reply naming the actual cheapest station from the list
+  (Esso, 196.9¢/L) with correct distance; a Petro-Points-selected follow-up correctly
+  kept recommending the true cheapest (Costco) since Petro-Points didn't change the
+  ranking in that test; an off-topic message ("write me a poem about spring") was
+  declined per the system instruction and redirected back to a real recommendation —
+  confirming the guardrail works.
+  **Model note:** `gemini-3.7-flash` (the owner's original choice) was hitting a
+  genuine, sustained `503 UNAVAILABLE "high demand"` from Google during this session
+  (confirmed via `ai.models.list()` that the model id itself is real, and that
+  `gemini-3.5-flash` succeeds against the same key/code path) — briefly hit a `429
+  RESOURCE_EXHAUSTED` "prepayment credits depleted" too during testing, which then
+  cleared on its own. Owner chose to keep `CHAT_MODEL` on **`gemini-3.5-flash`** (now
+  verified working end-to-end) rather than revert to the still-503ing `gemini-3.7-flash`
+  — swap `CHAT_MODEL` in `lib/gemini.ts` back later if 3.7 access matters more than
+  uptime.
 - 🔄 **Chatbot model switched from Claude Haiku 4.5 to Gemini 3.7 Flash** (owner's choice,
   2026-08-25). `@anthropic-ai/sdk` removed, `@google/genai` (v2.18.0) installed;
   `ANTHROPIC_API_KEY` renamed to `GEMINI_API_KEY` throughout `config.ts`/`.env(.example)`.
@@ -186,8 +208,8 @@
   - **Per-brand marker icons:** the owner asked for station icons on each marker. Before
     building anything, flagged that using real brand logo image assets would mean downloading
     files from brand websites (needs per-file go-ahead) and embedding trademarked artwork —
-    the owner asked directly whether that's legally fine for a non-commercial portfolio
-    project; answered honestly that isn't something to certify (trademark law isn't only about
+    the owner asked directly whether that's legally fine for a non-commercial project;
+    answered honestly that isn't something to certify (trademark law isn't only about
     monetization, though non-commercial/informational use like this is generally treated
     leniently) and proposed a safer default that gets the same practical benefit. **Implemented:**
     `BRAND_STYLES` in `Map.tsx` — a short abbreviation (e.g. "PC", "E", "S") + each brand's
@@ -217,6 +239,55 @@
   it previously needed. Verified live in-browser: Shell's info window shows a large yellow
   circular "S" badge at the top, directly above "Shell", with no extra gap before the address/
   price/link below it.
+- 🔄 **Added per-IP rate limiting on `/api/chat`** (owner's request, 2026-09-01, prompted
+  by hitting the Gemini account's own credits limit during Phase 5 testing) — every
+  chat request is a real, billed Gemini call, unlike the other routes, so it's the one
+  endpoint that needed its own throttle before the owner tops up billing.
+  `express-rate-limit` (`^8.7.0`) added; `routes/chat.ts` applies a 10 requests/minute
+  per-IP limiter (`standardHeaders: true` — `RateLimit-*`/`Retry-After` response headers
+  — so a well-behaved client can back off instead of hammering it) directly on the
+  `POST /` handler, ahead of the zod body validation. `index.ts` also gained
+  `app.set("trust proxy", 1)` — without it, every request behind Render's one reverse-
+  proxy hop in production would resolve to the proxy's own IP, so every visitor would
+  share a single 10/min budget instead of getting their own; `1` trusts exactly that one
+  hop's `X-Forwarded-For` entry rather than the whole header (which a client could
+  otherwise spoof to bypass the limiter). Verified live: the first 10 rapid-fire
+  requests each reached Gemini (and failed on the account's own depleted-credits error,
+  unrelated to this change); the 11th came back `429` with `{"error":"Too many chat
+  requests — please wait a minute and try again."}` before reaching Gemini at all, and
+  the response headers showed `RateLimit-Remaining: 0` / `Retry-After: 52`.
+- 🐛 **Fixed a real bug: out-of-Quebec searches showed raw JSON as the error** (found
+  during a broader app test pass, 2026-09-01) — `geocodeAddress`/Nominatim isn't bounded
+  to Quebec, so a real, valid address outside it (tested with "Toronto, ON") geocodes
+  successfully and then only fails downstream at `/api/stations`'s zod validation
+  (`lat`/`lng` bounds). `client/src/lib/api.ts`'s `request()`/`postChat()` were rendering
+  that failure's `error` field — a zod `flatten().fieldErrors` object, e.g. `{"lat":
+  ["lat must be within Quebec (44-63)"]}` — via `JSON.stringify`, so the user saw that
+  literal JSON blob instead of a sentence. **Fix:** added `errorMessage()` in `api.ts`,
+  shared by both wrappers, that joins a `fieldErrors`-shaped object's messages into one
+  readable string (falls back to a plain string `error` or a generic "Request failed"
+  as before). Verified live: the same Toronto search now shows `lat must be within
+  Quebec (44-63)` instead of the raw object, while the previously-loaded (stale but
+  still valid) Montreal results correctly stay on screen rather than being cleared.
+  **Also ruled out during this pass:** the subscription checkboxes appeared to reset
+  after this same failed search, which looked like a second bug — traced it to the
+  browser-automation `form_input` tool setting a checkbox's DOM `.checked` without
+  firing React's change event, so it visually "stuck" until the next re-render silently
+  reverted it to React's real (never-updated) state. A real mouse click on the same
+  checkbox was confirmed to persist correctly across re-renders — not an app bug, an
+  automation-tool artifact.
+- ✅ **Full app pass, 2026-09-01 (after the owner topped up Gemini billing).** Beyond the
+  chatbot bug fix and rate limiter above, this pass also verified: diesel fuel type
+  (stations with no diesel price correctly show `—` and are excluded from the cheapest
+  calculation rather than sorting as free/zero); selecting multiple fuel programs at
+  once; an empty address search correctly no-ops client-side rather than firing a
+  request; and the chatbot's full round-trip with real Gemini credits restored — asked
+  "Which diesel station is cheapest?" and got back a reply correctly grounded in the
+  actual displayed diesel prices, correctly comparing the two same-priced Esso stations
+  by distance. `gemini-3.5-flash` + the new rate limiter both confirmed working
+  together. "Use my location" remains unverified by automation (native OS/browser
+  permission prompt outside the page — verified live by a human in an earlier session
+  per Phase 3 above); everything else in the app has no known open bugs.
 - **Nothing has been committed to git.** The owner handles all git operations themselves —
   never run `git init`/`add`/`commit`/`push` on this project.
 
@@ -265,21 +336,21 @@ does *only* this task and politely declines anything else.
 prices are in **cents per litre (¢/L)**, currency is **CAD**, and the fuel-program list is the
 Canadian one (above). Location search accepts Canadian postal codes / addresses / cities.
 
-**Why / goal:** This is a portfolio/resume project. Its purpose is to give the owner hands-on
-experience (a) building and shipping a fullstack app and (b) integrating a basic AI system
-(an LLM chatbot) into that app — the two things current tech internships look for. So the design
-prioritizes: clear, readable code where "what is what" is obvious; a genuinely demonstrable
-skill set (REST API, MongoDB geospatial queries, external-API integration, caching, LLM
-integration); no login/auth; and easy deployment on the owner's existing paid **Render** plan.
+**Why / goal:** A fullstack app with a real, useful core (find the cheapest nearby gas) plus a
+genuine LLM integration (a chatbot that recommends the best station given the user's fuel
+programs) layered on top. The design prioritizes: clear, readable code where "what is what" is
+obvious; a real, demonstrable feature set (REST API, MongoDB geospatial queries, external-API
+integration, caching, LLM integration); no login/auth; and easy deployment on the owner's
+existing paid **Render** plan.
 
 **Decisions already made (with the owner):**
 - **Real data, not mock.** Gas prices come from a real, low-cost third-party API (see below).
-- **TypeScript** for both frontend and backend. The owner knows some JavaScript and wants TS
-  concepts explained carefully *as we build* — so implementation must narrate the TS parts
-  (types, interfaces, generics, typed async, Mongoose typing, etc.), not just produce code.
-- **Gemini 3.7 Flash** (`gemini-3.7-flash`, via `@google/genai`) powers the chatbot — the
-  owner's choice (switched from the original Claude Haiku 4.5 plan on 2026-08-25); cheap,
-  fast, generous free tier, ideal for this constrained recommender task.
+- **TypeScript** for both frontend and backend, throughout.
+- **Gemini** (via `@google/genai`) powers the chatbot — the owner's choice (switched from the
+  original Claude Haiku 4.5 plan on 2026-08-25); cheap, fast, generous free tier, ideal for
+  this constrained recommender task. **Active model is `gemini-3.5-flash`** (`CHAT_MODEL` in
+  `server/src/lib/gemini.ts`) — see the 2026-09-01 Status entries above for why (`gemini-3.7-flash`
+  hit a sustained outage during Phase 5 testing).
 - **Map:** Google Maps via `@vis.gl/react-google-maps` (switched from Leaflet/OpenStreetMap
   2026-08-29, owner's choice — see Status above). Requires a `VITE_GOOGLE_MAPS_API_KEY`.
 
@@ -336,10 +407,10 @@ Browser (React + TS + Google Maps)
 Express + TS API  ──────────────────────────────────────────────
    • stationsService: Mongo cache ($near) → on miss, FuelPriceProvider → geocode → cache
    • dealsService:    app-owned subscriptions/programs + active deals (seeded, editable)
-   • chatService:     compute effective prices in code, then Gemini 3.7 Flash reasons+explains
+   • chatService:     compute effective prices in code, then Gemini reasons+explains
    ▼                         ▼                          ▼
 MongoDB Atlas (free M0)   Gas Quebec API             Gemini API (@google/genai)
-  - stations (2dsphere,     (free, unauthenticated,    model: gemini-3.7-flash
+  - stations (2dsphere,     (free, unauthenticated,    model: gemini-3.5-flash
     TTL cache; ¢/L)          Quebec coverage)
   - programs / deals
   - geocodeCache
@@ -412,22 +483,22 @@ NearestGas/
 - `GET /api/deals` and `GET /api/programs` → dealsService reads seeded reference data.
 - `POST /api/chat` `{ message, subscriptions: string[], lat, lng }` → chatService (below).
 
-**Key service logic — `stationsService`:** the cache-first pattern is the centerpiece resume
-skill. Reuse the same fetch/upsert path everywhere; keep the provider call behind the interface.
+**Key service logic — `stationsService`:** the cache-first pattern is the centerpiece of this
+service. Reuse the same fetch/upsert path everywhere; keep the provider call behind the interface.
 
 **Chatbot service (`chatService`) — the AI integration:**
 1. Get nearby stations (via stationsService) + the user's selected `subscriptions` + active deals.
 2. **In code**, compute each station's *effective* ¢/L (posted ¢/L − applicable per-litre
    discounts; factor membership cost in CAD where relevant) — deterministic math, so prices are
    never hallucinated.
-3. Call **Gemini 3.7 Flash** (`ai.models.generateContent({ model: 'gemini-3.7-flash', contents,
+3. Call **Gemini** (`ai.models.generateContent({ model: CHAT_MODEL /* gemini-3.5-flash */, contents,
    config: { systemInstruction, maxOutputTokens: ~1024 } })`) with a tight **system instruction**
    that (a) constrains it to *only* gas-station recommendation, declining off-topic asks, and
    (b) is given the structured stations + effective prices + subscriptions as context (via
    `contents`). Gemini picks the best station and explains the reasoning conversationally
    (membership tradeoffs, "worth the detour?", grade choice).
-   - This "deterministic data + LLM for reasoning/explanation" split is the exact retrieve-then-
-     reason pattern internships want, and keeps numbers accurate.
+   - This "deterministic data + LLM for reasoning/explanation" split is a standard retrieve-then-
+     reason pattern, and keeps numbers accurate.
    - Streaming (`ai.models.generateContentStream(...)`) is an optional enhancement for a nicer
      typing effect.
 
@@ -463,7 +534,7 @@ when `chatService` is actually implemented (Phase 5), since this is a fast-movin
 - **`Chatbot`**: simple chat panel → `POST /api/chat` with message + selected subscriptions +
   current location; renders Gemini's recommendation.
 - **`lib/api.ts` + `types.ts`**: typed fetch wrappers and shared types so the client is fully typed
-  end-to-end — a natural place to teach TS interfaces/generics.
+  end-to-end.
 - **Prices display** as `¢/L` (CAD), e.g. `145.9 ¢/L`; the cheapest (effective) station is
   highlighted on both map and list.
 - **Styling:** light, clean **custom CSS** (simple cards, highlighted cheapest station, tidy chat
@@ -483,25 +554,22 @@ when `chatService` is actually implemented (Phase 5), since this is a fast-movin
 
 ## Implementation phases (milestone order)
 
-1. **Scaffold** monorepo: `client` (Vite React TS) + `server` (Express TS), `.env.example`,
+1. ✅ **Scaffold** monorepo: `client` (Vite React TS) + `server` (Express TS), `.env.example`,
    README skeleton, Atlas connection. Verify both run locally.
-2. **Data layer:** Mongoose models + indexes; `FuelPriceProvider` interface + first concrete
+2. ✅ **Data layer:** Mongoose models + indexes; `FuelPriceProvider` interface + first concrete
    provider; `stationsService` cache-first flow; `geocodeService`. Verify `GET /api/stations`
    returns real, cached stations.
-3. **Frontend map MVP:** SearchBar + geolocation + Map + StationList wired to `/api/stations`.
+3. ✅ **Frontend map MVP:** SearchBar + geolocation + Map + StationList wired to `/api/stations`.
    Verify pins + prices render for a real location.
-4. **Subscriptions/deals:** models + seed + `SubscriptionPicker`. Verify programs load and select.
-5. **Chatbot:** `chatService` (effective-price math + Gemini 3.7 Flash + constrained system
+4. ✅ **Subscriptions/deals:** models + seed + `SubscriptionPicker`. Verify programs load and select.
+5. ✅ **Chatbot:** `chatService` (effective-price math + Gemini + constrained system
    instruction) + `Chatbot` UI. Verify it recommends a best station and refuses off-topic requests.
-6. **Polish + deploy:** styling, error/empty states, README (setup + architecture), deploy to
-   Render, smoke-test end-to-end in production.
-
-Throughout: **narrate the TypeScript** — explain each new type/interface/generic and typed async
-pattern as it's introduced, since the owner is learning TS while building.
+6. ➡️ **Polish + deploy (in progress):** styling, error/empty states, README (setup +
+   architecture), deploy to Render, smoke-test end-to-end in production.
 
 ## Prerequisites the owner must provide (at implementation time)
 
-- **Gemini API key** (from aistudio.google.com) → `GEMINI_API_KEY` (for Gemini 3.7 Flash).
+- **Gemini API key** (from aistudio.google.com) → `GEMINI_API_KEY`. ✅ done.
 - **MongoDB Atlas** free cluster → `MONGODB_URI`. ✅ done.
 - **Google Maps JavaScript API key** (Cloud Console, Maps JavaScript API enabled) →
   `VITE_GOOGLE_MAPS_API_KEY`. ✅ done (2026-08-29).

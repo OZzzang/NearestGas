@@ -61,3 +61,23 @@ export interface Program {
 export interface ProgramsResponse {
   programs: Program[];
 }
+
+// Mirrors server chat.ts's request body / response shape.
+export interface ChatRequest {
+  message: string;
+  subscriptions: string[];
+  lat: number;
+  lng: number;
+  radius: number;
+  fuel: FuelType;
+}
+
+export interface ChatResponse {
+  reply: string;
+}
+
+// Client-only — one turn of the chat panel's local conversation, not persisted.
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}

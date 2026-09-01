@@ -12,8 +12,17 @@ import { connectToDatabase } from "./lib/db.js";
 import { stationsRouter } from "./routes/stations.js";
 import { geocodeRouter } from "./routes/geocode.js";
 import { programsRouter } from "./routes/programs.js";
+import { chatRouter } from "./routes/chat.js";
 
 const app = express();
+
+// Render (see PLAN.md's deployment section) puts one reverse proxy in front of this
+// app. Without this, every request's `req.ip` resolves to that proxy's own address —
+// not the real client — which would make chat.ts's per-IP rate limiter treat every
+// visitor as the same one IP and share a single 10/min budget. `1` trusts exactly one
+// hop (the proxy's `X-Forwarded-For` entry), not the whole chain, so a client can't
+// spoof its way past the limiter by setting that header itself.
+app.set("trust proxy", 1);
 
 app.use(cors({ origin: config.clientOrigin }));
 app.use(express.json());
@@ -27,7 +36,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 app.use("/api/stations", stationsRouter);
 app.use("/api/geocode", geocodeRouter);
 app.use("/api/programs", programsRouter);
-// The chat route gets mounted here in a later phase.
+app.use("/api/chat", chatRouter);
 
 async function main(): Promise<void> {
   await connectToDatabase();
