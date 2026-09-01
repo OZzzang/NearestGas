@@ -1,22 +1,27 @@
 /**
- * geocodeService — turns a typed-in address/city/postal code into {lat, lng} via
- * Nominatim (OpenStreetMap's free geocoder, no API key). Every result is cached in
- * `GeocodeCache` forever, because an address's coordinates don't change and Nominatim's
- * usage policy caps free use at 1 request/second — caching means we basically never hit
- * that limit for a low-traffic app.
+ * geocodeService — turns a typed-in address/city/postal code into {lat, lng} via the
+ * Google Geocoding API. Every result is cached in `GeocodeCache` forever, because an
+ * address's coordinates don't change — caching also keeps this well within Google's
+ * free monthly quota for a low-traffic app.
+ *
+ * Originally used Nominatim (OpenStreetMap's free geocoder, no API key) — switched
+ * 2026-09-01 after discovering in production that Nominatim reliably 502s every
+ * request from Render's servers while working fine from anywhere else. Nominatim's
+ * usage policy blocks/throttles shared cloud-hosting IP ranges (Render, Heroku, AWS
+ * Lambda, etc. all hit this), even with a compliant User-Agent, since many unrelated
+ * apps share overlapping egress IPs. Google's Geocoding API doesn't have this problem
+ * and reuses the same GCP project as the Maps JavaScript API — just a separate,
+ * server-side-restricted key (`GOOGLE_GEOCODING_API_KEY`), since this call has no
+ * browser Referer to restrict against the way the client-side Maps key does.
  */
+import { config } from "../config.js";
 import { GeocodeCacheModel } from "../models/GeocodeCache.js";
 
-const BASE_URL = "https://nominatim.openstreetmap.org/search";
+const BASE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 
-// Nominatim's usage policy requires a descriptive User-Agent identifying the app (not
-// a browser-like UA) — this stays a generic app identifier rather than embedding a
-// personal contact, which is fine at this project's request volume.
-const USER_AGENT = "NearestGas/1.0 (portfolio project)";
-
-interface NominatimResult {
-  lat: string;
-  lon: string;
+interface GoogleGeocodeResponse {
+  status: string;
+  results: { geometry: { location: { lat: number; lng: number } } }[];
 }
 
 export interface GeocodeResult {
@@ -38,21 +43,22 @@ export async function geocodeAddress(query: string): Promise<GeocodeResult | nul
   }
 
   const url = new URL(BASE_URL);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("q", query);
-  url.searchParams.set("countrycodes", "ca");
-  url.searchParams.set("limit", "1");
+  url.searchParams.set("address", query);
+  url.searchParams.set("components", "country:CA");
+  url.searchParams.set("key", config.googleGeocodingApiKey);
 
-  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Nominatim request failed: ${response.status} ${response.statusText}`);
+    throw new Error(`Google Geocoding API request failed: ${response.status} ${response.statusText}`);
   }
 
-  const results = (await response.json()) as NominatimResult[];
-  if (results.length === 0) return null;
+  const body = (await response.json()) as GoogleGeocodeResponse;
+  if (body.status === "ZERO_RESULTS") return null;
+  if (body.status !== "OK") {
+    throw new Error(`Google Geocoding API returned status: ${body.status}`);
+  }
 
-  const lat = Number(results[0].lat);
-  const lng = Number(results[0].lon);
+  const { lat, lng } = body.results[0].geometry.location;
 
   await GeocodeCacheModel.create({
     query: normalized,

@@ -16,6 +16,10 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Server-side geocoding key, restricted to the Geocoding API — separate from the
+      # frontend's VITE_GOOGLE_MAPS_API_KEY. See server/.env.example.
+      - key: GOOGLE_GEOCODING_API_KEY
+        sync: false
       # Set once nearestgas-web's URL is known (Render assigns it on first deploy) —
       # needed for CORS (see server/src/index.ts).
       - key: CLIENT_ORIGIN

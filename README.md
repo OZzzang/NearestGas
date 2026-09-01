@@ -6,7 +6,7 @@ actually the best deal once your fuel memberships and rewards programs are facto
 ## Features
 
 - **Location search** — use your current location (browser geolocation) or type an address/
-  postal code, geocoded via Nominatim.
+  postal code, geocoded via the Google Geocoding API.
 - **Map + list view** — nearby gas stations plotted on a Google Map (brand-colored markers, no
   logo artwork — see [Architecture notes](#architecture-notes)), mirrored in a list sortable by
   price or distance. Prices shown in ¢/L (CAD). Click a station's marker (or a row in the list)
@@ -65,7 +65,7 @@ A few decisions worth knowing before reading the code:
 | Backend | Node.js + Express + TypeScript |
 | Database | MongoDB (Atlas free tier), Mongoose — geospatial (`2dsphere`) cache of station data |
 | Gas price data | [Gas Quebec API](https://www.gasquebec.ca) (free, unauthenticated, Quebec coverage), behind a swappable provider interface |
-| Geocoding | Nominatim (OpenStreetMap), cached |
+| Geocoding | Google Geocoding API, cached |
 | AI | Google Gemini API, `gemini-3.5-flash` via `@google/genai` |
 
 ## Project structure
@@ -90,6 +90,9 @@ You will need:
   validation is all-or-nothing) and it powers the chatbot
 - A [Google Maps JavaScript API key](https://console.cloud.google.com/google/maps-apis/credentials)
   (Maps JavaScript API enabled) — the map renders an error state without it
+- A **second, separate** Google API key for the Geocoding API (Cloud Console → enable
+  "Geocoding API" → create a key restricted to just that API — this one's called
+  server-side, so it can't be restricted by HTTP referrer the way the Maps key is)
 - No fuel-price API key needed — the active provider (Gas Quebec) is free and unauthenticated
 
 ### Backend
@@ -97,7 +100,7 @@ You will need:
 ```bash
 cd server
 npm install
-cp .env.example .env   # fill in MONGODB_URI and GEMINI_API_KEY
+cp .env.example .env   # fill in MONGODB_URI, GEMINI_API_KEY, and GOOGLE_GEOCODING_API_KEY
 npm run seed             # one-time: seeds fuel loyalty programs + demo deals
 npm run dev               # starts the API on http://localhost:4000
 ```

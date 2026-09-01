@@ -288,6 +288,42 @@
   together. "Use my location" remains unverified by automation (native OS/browser
   permission prompt outside the page — verified live by a human in an earlier session
   per Phase 3 above); everything else in the app has no known open bugs.
+- 🔄 **Phase 6 groundwork (2026-09-01):** `render.yaml` added (a Render Blueprint deploying
+  both services in one pass, secrets left as `sync: false` so nothing sensitive is
+  committed); `README.md` rewritten to match current reality (was still describing
+  Leaflet and "chatbot not built yet"); scaffold branding cleaned up — `client/public/
+  icons.svg` (a dead, unused sprite sheet of Discord/Bluesky/GitHub/X icons) deleted,
+  and `favicon.svg` (a generic purple scaffold blob) replaced with a simple fuel-drop
+  icon in the app's own accent color. Per the owner's request, portfolio/resume/
+  internship framing was also stripped from this file's design-rationale sections
+  (the "Why/goal" paragraph, the TypeScript/stationsService/chatService rationale, the
+  "narrate the TypeScript" instruction) — those decisions still stand, just described
+  as plain engineering rationale now. `README.md`'s deployment instructions were
+  removed per the same request (it now covers only what the app is and how to run it
+  locally; `render.yaml` and this file's own Deployment section still have the real
+  steps).
+- 🐛 **Fixed a real production bug: geocoding 502ed on every request** (found live on
+  the deployed Render app, 2026-09-01, immediately after first deploy) — the owner
+  reported every address/postal-code search failing on `https://nearestgas-web.onrender.com`.
+  Diagnosed by isolating the failure: `/api/health` was fine, `/api/stations` for an
+  *uncached* location succeeded (a fresh, live Gas Quebec provider call — proving
+  outbound internet access worked from Render in general), but `/api/geocode` 502ed on
+  every query, including full addresses independently confirmed (via a direct curl from
+  outside Render) to have real Nominatim matches. That isolates the failure to Nominatim
+  specifically rejecting/being unreachable from Render's servers — a known, documented
+  issue: Nominatim's usage policy blocks/throttles shared cloud-hosting IP ranges
+  (Render, Heroku, AWS Lambda, etc. all hit this) even with a compliant `User-Agent`,
+  since many unrelated apps share overlapping egress IPs. **Fix, at the owner's choice:**
+  swapped `geocodeService.ts` from Nominatim to the **Google Geocoding API** — same
+  public interface and Mongo caching, just a different upstream call
+  (`components=country:CA` mirrors the old `countrycodes=ca`). Needs its own **server-
+  side** key, `GOOGLE_GEOCODING_API_KEY` (added to `config.ts`'s required env, `server/
+  .env.example`, and `render.yaml`) — deliberately separate from the client's
+  `VITE_GOOGLE_MAPS_API_KEY` since this one is called server-side (no browser `Referer`
+  to restrict against) and should be API-restricted (Geocoding API only) rather than
+  restricted by HTTP referrer. **Still needs:** the owner creating that key in Cloud
+  Console (Geocoding API enabled, key restricted) and setting it locally + on Render —
+  not yet verified live end-to-end pending that key.
 - **Nothing has been committed to git.** The owner handles all git operations themselves —
   never run `git init`/`add`/`commit`/`push` on this project.
 
@@ -386,15 +422,16 @@ request → check MongoDB stations ($near, fresh?) ──hit──► return cac
                      │ miss / stale
                      ▼
         the ONE active FuelPriceProvider  ─► normalize to Station ─► geocode if needed
-                     │                                                    (Nominatim, cached)
+                     │                                            (Google Geocoding, cached)
                      ▼
         upsert into MongoDB stations (2dsphere + TTL) ─► return
 ```
 
 Benefits: few external calls → low cost, fast, resilient to rate limits; we still **showcase
 MongoDB geospatial queries** even with real data; and the vendor is swappable in one place.
-Providers that return only an address (no lat/lng) are geocoded via **Nominatim (OpenStreetMap,
-free — covers Canada)** and cached in Mongo so each address is geocoded at most once.
+Providers that return only an address (no lat/lng) are geocoded via the **Google Geocoding API**
+(server-side key, restricted to that one API — see the 2026-09-01 Status entry on why this
+isn't Nominatim anymore) and cached in Mongo so each address is geocoded at most once.
 
 ## Architecture overview
 
@@ -478,7 +515,7 @@ NearestGas/
 - `GET /api/stations?lat&lng&radius&fuel` → stationsService: query Mongo `$near`; on cache miss
   or thin results, call `FuelPriceProvider.getStations()`, geocode any address-only stations,
   upsert into Mongo, return combined list (map pins + list view).
-- `GET /api/geocode?q=<address>` → geocodeService: Nominatim lookup (cached) → `{lat,lng}` for the
+- `GET /api/geocode?q=<address>` → geocodeService: Google Geocoding lookup (cached) → `{lat,lng}` for the
   typed-location search box.
 - `GET /api/deals` and `GET /api/programs` → dealsService reads seeded reference data.
 - `POST /api/chat` `{ message, subscriptions: string[], lat, lng }` → chatService (below).
